@@ -106,7 +106,7 @@ resource "aws_elasticache_parameter_group" "default" {
   count       = local.enabled && var.create_parameter_group ? 1 : 0
   name        = local.parameter_group_name
   description = var.parameter_group_description != null ? var.parameter_group_description : "Elasticache parameter group ${local.parameter_group_name}"
-  family      = var.family
+  family      = var.elasticache_parameter_group_family
 
   dynamic "parameter" {
     for_each = var.cluster_mode_enabled ? concat([{ name = "cluster-enabled", value = "yes" }], var.parameter) : var.parameter
