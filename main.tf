@@ -1,6 +1,19 @@
 locals {
   elasticache_subnet_group_name = var.elasticache_subnet_group_name != "" ? var.elasticache_subnet_group_name : join("", aws_elasticache_subnet_group.default[*].name)
   enabled                       = module.this.enabled
+
+  # The name of the parameter group can’t include "."
+  safe_family = replace(var.elasticache_parameter_group_family, ".", "-")
+
+  parameter_group_name = (
+    var.parameter_group_name != null ? var.parameter_group_name : (
+      var.create_parameter_group
+      ?
+      "${module.this.id}-${local.safe_family}" # The name of the new parameter group to be created
+      :
+      "default.${var.elasticache_parameter_group_family}" # Default parameter group name created by AWS
+    )
+  )
 }
 
 resource "null_resource" "cluster_urls" {
@@ -90,13 +103,28 @@ resource "aws_elasticache_subnet_group" "default" {
 }
 
 resource "aws_elasticache_parameter_group" "default" {
-  count  = local.enabled ? 1 : 0
-  name   = module.this.id
-  family = var.elasticache_parameter_group_family
+  count       = local.enabled && var.create_parameter_group ? 1 : 0
+  name        = local.parameter_group_name
+  description = var.parameter_group_description != null ? var.parameter_group_description : "Elasticache parameter group ${local.parameter_group_name}"
+  family      = var.family
 
-  parameter {
-    name  = "max_item_size"
-    value = var.max_item_size
+  dynamic "parameter" {
+    for_each = var.cluster_mode_enabled ? concat([{ name = "cluster-enabled", value = "yes" }], var.parameter) : var.parameter
+    content {
+      name  = parameter.value.name
+      value = tostring(parameter.value.value)
+    }
+  }
+
+  tags = module.this.tags
+
+  lifecycle {
+    create_before_destroy = true
+
+    # Ignore changes to the description since it will try to recreate the resource
+    ignore_changes = [
+      description,
+    ]
   }
 }
 
